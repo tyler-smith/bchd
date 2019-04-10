@@ -273,11 +273,6 @@ message BlockNotification {
 	BlockInfo block = 2;
 }
 
-message RawTransactionNotification {
-	TransactionNotification.Type type = 1;
-	bytes transaction = 2;
-}
-
 message TransactionNotification {
 	enum Type {
 		UNCONFIRMED = 0;
@@ -303,7 +298,7 @@ message BlockInfo {
 	int32 version = 3;
 	bytes previous_block = 4;
 	bytes merkle_root = 5;
-	int64 time = 6;
+	int64 timestamp = 6;
 	uint32 bits = 7;
 	uint32 nonce = 8;
 
@@ -394,6 +389,10 @@ message TransactionFilter {
 	//TODO: Are these extra filters values relevant?
 	// - scriptPubkey
 	// - script data elements
+	
+	// Subscribed/Unsubscribe to everything. Other filters
+	// will be ignored.
+	bool all_transactions = 3;
 }
 
 ```
