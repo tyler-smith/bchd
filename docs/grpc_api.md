@@ -88,7 +88,7 @@ service bchrpc {
 	rpc GetAddressUnspentOutputs(GetAddressUnspentOutputsRequest) returns (GetAddressUnspentOutputsResponse) {}
 	
 	// **Requires TxIndex***
-	// Returns a merkle (SPV) proof that the given transaction is in the provided block
+	// Returns a merkle (SPV) proof that the given transaction is in the provided block.
 	rpc GetMerkleProof(GetMerkleProofRequest) returns (GetMerkleProofResponse) {}
 	
 	// Submit a transaction to all connected peers.
