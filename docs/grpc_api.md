@@ -25,7 +25,7 @@ A goal of bchd is to make it easier for the full node software to serve applicat
 software to be run on top of the ful node. This would mean every full node would potentially be able to serve applications if the correct
 runtime options are set and the API made public.
 
-## Specification // TODO still a WIP
+## Specification
 ```protobuf
 
 syntax = "proto3";
