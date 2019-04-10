@@ -249,7 +249,7 @@ message GetAddressUnspentOutputsResponse {
 message GetMerkleProofRequest {
 	bytes transaction_hash = 1;
 }
-GetMerkleProofResponse {
+message GetMerkleProofResponse {
 	BlockInfo block = 1;
 	repeated bytes hashes = 2;
 	bytes flags = 3;
