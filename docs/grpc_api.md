@@ -53,6 +53,10 @@ service bchrpc {
 	// Get a serialized block.
 	rpc GetRawBlock(GetRawBlockRequest) returns (GetRawBlockResponse) {}
 	
+	// **Requires CfIndex**
+	// Get a block filter.
+	rpc GetBlockFilter(GetBlockFilterRequest) returns (GetBlockFilterResponse) {}
+	
 	// This RPC sends a block locator object to the server and the server responds with
 	// a batch of no more than 2000 headers. Upon parsing the block locator, if the server
 	// concludes there has been a fork, it will send headers starting at the fork point, 
@@ -159,6 +163,16 @@ message GetRawBlockRequest {
 }
 message GetRawBlockResponse {
 	bytes block = 1;
+}
+
+message GetBlockFilterRequest {
+	oneof hash_or_height {
+		bytes hash = 1;
+		int32 height = 2;
+	}
+}
+message GetBlockFilterResponse {
+	bytes filter = 1;
 }
 
 message GetHeadersRequest {
