@@ -928,7 +928,7 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 func (m *wsNotificationManager) notifyTxFinalized(clients map[chan struct{}]*wsClient, tx *bchutil.Tx, finalizationTime time.Duration) {
 	ntfn := btcjson.NewTxFinalizedNtfn(tx.Hash().String(), finalizationTime)
 
-	marshalledJSON, err := btcjson.MarshalCmd(nil, ntfn)
+	marshalledJSON, err := btcjson.MarshalCmd("1.0", nil, ntfn)
 	if err != nil {
 		rpcsLog.Errorf("Failed to marshal processedtx notification: %v", err)
 		return
