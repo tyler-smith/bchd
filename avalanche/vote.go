@@ -1,6 +1,10 @@
 package avalanche
 
-import "time"
+import (
+	"time"
+
+	"github.com/gcash/bchd/chaincfg/chainhash"
+)
 
 // Status is the status of consensus on a particular target
 type Status int
@@ -19,9 +23,25 @@ const (
 	StatusFinalized
 )
 
+type voteTargetType int
+
+const (
+	VoteTargetTypeTransaction voteTargetType = iota
+	VoteTargetTypeBlock
+)
+
+type VoteTarget interface {
+	Type() voteTargetType
+	Hash() chainhash.Hash
+}
+
 // VoteRecord keeps track of a series of votes for a target
 type VoteRecord struct {
-	txdesc           *TxDesc
+	targetType voteTargetType
+
+	txdesc  TxDesc
+	blkdesc BlkDesc
+
 	votes            uint8
 	consider         uint8
 	confidence       uint16
@@ -31,7 +51,7 @@ type VoteRecord struct {
 
 // NewVoteRecord instantiates a new base record for voting on a target
 // `accepted` indicates whether or not the initial state should be acceptance
-func NewVoteRecord(txdesc *TxDesc, accepted bool) *VoteRecord {
+func NewVoteRecord(txdesc TxDesc, accepted bool) *VoteRecord {
 	return &VoteRecord{txdesc: txdesc, confidence: boolToUint16(accepted), timestamp: time.Now()}
 }
 

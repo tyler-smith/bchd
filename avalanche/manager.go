@@ -47,6 +47,11 @@ type TxDesc struct {
 	Code *wire.RejectCode
 }
 
+type BlkDesc struct {
+	*bchutil.Block
+	Code *wire.RejectCode
+}
+
 // newPeerMsg signifies a newly connected peer to the handler.
 type newPeerMsg struct {
 	peer *peer.Peer
@@ -59,11 +64,15 @@ type donePeerMsg struct {
 
 // newTxsMsg signifies new transactions to be processed.
 type newTxsMsg struct {
-	tx *TxDesc
+	tx TxDesc
+}
+
+type newBlockMsg struct {
+	blk BlkDesc
 }
 
 type blockConnectedMsg struct {
-	blk *bchutil.Block
+	blk BlkDesc
 }
 
 // requestExpirationMsg signifies a request has expired and
@@ -95,11 +104,13 @@ type AvalancheManager struct {
 	quit    chan struct{}
 	msgChan chan interface{}
 
-	voteRecords map[chainhash.Hash]*VoteRecord
-	outpoints   map[wire.OutPoint][]*TxDesc
-	rejectedTxs map[chainhash.Hash]struct{}
-	round       int64
-	queries     map[string]RequestRecord
+	voteRecords     map[chainhash.Hash]*VoteRecord
+	outpoints       map[wire.OutPoint][]TxDesc
+	blocks          map[chainhash.Hash][]BlkDesc
+	rejectedTargets map[chainhash.Hash]struct{}
+
+	round   int64
+	queries map[string]RequestRecord
 
 	notificationCallback func(tx *bchutil.Tx, finalizationTime time.Duration)
 
@@ -112,15 +123,16 @@ func New() (*AvalancheManager, error) {
 		return nil, err
 	}
 	return &AvalancheManager{
-		peers:       make(map[*peer.Peer]struct{}),
-		wg:          sync.WaitGroup{},
-		quit:        make(chan struct{}),
-		msgChan:     make(chan interface{}),
-		voteRecords: make(map[chainhash.Hash]*VoteRecord),
-		outpoints:   make(map[wire.OutPoint][]*TxDesc),
-		rejectedTxs: make(map[chainhash.Hash]struct{}),
-		queries:     make(map[string]RequestRecord),
-		privKey:     avalanchePrivkey,
+		peers:           make(map[*peer.Peer]struct{}),
+		wg:              sync.WaitGroup{},
+		quit:            make(chan struct{}),
+		msgChan:         make(chan interface{}),
+		voteRecords:     make(map[chainhash.Hash]*VoteRecord),
+		outpoints:       make(map[wire.OutPoint][]TxDesc),
+		blocks:          make(map[chainhash.Hash][]BlkDesc),
+		rejectedTargets: make(map[chainhash.Hash]struct{}),
+		queries:         make(map[string]RequestRecord),
+		privKey:         avalanchePrivkey,
 	}, nil
 }
 
@@ -156,7 +168,9 @@ out:
 				am.handleNewPeer(msg.peer)
 			case *donePeerMsg:
 				am.handleDonePeer(msg.peer)
-			case *newTxsMsg:
+			case newBlockMsg:
+				// am.handleNewBlock(msg.blk)
+			case newTxsMsg:
 				am.handleNewTx(msg.tx)
 			case *blockConnectedMsg:
 				am.handleBlockConnected(msg.blk)
@@ -211,7 +225,7 @@ func (am *AvalancheManager) handleQuery(req *wire.MsgAvaRequest, respChan chan *
 	votes := make([]byte, len(req.InvList))
 	for i, inv := range req.InvList {
 		txid := inv.Hash
-		if _, exists := am.rejectedTxs[txid]; exists {
+		if _, exists := am.rejectedTargets[txid]; exists {
 			votes[i] = 0x00 // No vote
 			continue
 		}
@@ -277,11 +291,15 @@ func (am *AvalancheManager) handleDonePeer(p *peer.Peer) {
 }
 
 // NewTransactions passes new unconfirmed transactions into the manager to be processed.
-func (am *AvalancheManager) NewTransaction(tx *TxDesc) {
-	am.msgChan <- &newTxsMsg{tx}
+func (am *AvalancheManager) NewTransaction(tx TxDesc) {
+	am.msgChan <- newTxsMsg{tx}
 }
 
-func (am *AvalancheManager) handleNewTx(txd *TxDesc) {
+func (am *AvalancheManager) Newblock(blk BlkDesc) {
+	am.msgChan <- newBlockMsg{blk}
+}
+
+func (am *AvalancheManager) handleNewTx(txd TxDesc) {
 	accepted := true
 	if txd.Code != nil {
 		switch *txd.Code {
@@ -291,7 +309,7 @@ func (am *AvalancheManager) handleNewTx(txd *TxDesc) {
 		case wire.RejectInvalid:
 			// Invalid transactions are transactions which violate the consensus
 			// rules and must be permanently considered invalid.
-			am.rejectedTxs[*txd.Tx.Hash()] = struct{}{}
+			am.rejectedTargets[*txd.Tx.Hash()] = struct{}{}
 			return
 		case wire.RejectDoubleSpend:
 			fallthrough
@@ -337,7 +355,7 @@ func (am *AvalancheManager) handleNewTx(txd *TxDesc) {
 				am.outpoints[in.PreviousOutPoint] = doubleSpends
 			}
 		} else {
-			am.outpoints[in.PreviousOutPoint] = []*TxDesc{txd}
+			am.outpoints[in.PreviousOutPoint] = []TxDesc{txd}
 		}
 	}
 
@@ -348,18 +366,24 @@ func (am *AvalancheManager) handleNewTx(txd *TxDesc) {
 	}
 }
 
+// Plan:
+//   - when blockConnectedMsg comes in we run Snowflake on it
+//   - once it's finalized we call handleBlockConnected which should be renamed
+//     to something like "onBlockFinalization"
+
 // BlockConnected fires whenever a new block is connected to the chain.
 // When this happens we should go through the block and delete everything
 // that has confirmed from memory.
 func (am *AvalancheManager) BlockConnected(block *bchutil.Block) {
-	am.msgChan <- &blockConnectedMsg{block}
+	am.msgChan <- &blockConnectedMsg{BlkDesc{Block: block}}
 }
 
+// TODO: This should happen only after a block has been finalized
 func (am *AvalancheManager) handleBlockConnected(block *bchutil.Block) {
 	for _, tx := range block.Transactions() {
 		txid := tx.Hash()
 		am.removeVoteRecords(tx)
-		delete(am.rejectedTxs, *txid)
+		delete(am.rejectedTargets, *txid)
 	}
 }
 
@@ -426,10 +450,10 @@ func (am *AvalancheManager) getRandomPeerToQuery() *peer.Peer {
 func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 	var invs []wire.InvVect
 	var toDelete []chainhash.Hash
-	for txid, r := range am.voteRecords {
+	for targetHash, r := range am.voteRecords {
 		// Delete very old inventory that hasn't finalized
 		if time.Since(r.timestamp) > DeleteInventoryAfter {
-			toDelete = append(toDelete, txid)
+			toDelete = append(toDelete, targetHash)
 			continue
 		}
 
@@ -444,7 +468,12 @@ func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 		r.inflightRequests++
 
 		// We don't have a decision, we need more votes.
-		invs = append(invs, *wire.NewInvVect(wire.InvTypeTx, &txid))
+		switch r.targetType {
+		case VoteTargetTypeTransaction:
+			invs = append(invs, *wire.NewInvVect(wire.InvTypeTx, &targetHash))
+		case VoteTargetTypeBlock:
+			invs = append(invs, *wire.NewInvVect(wire.InvTypeBlock, &targetHash))
+		}
 	}
 
 	if len(invs) >= AvalancheMaxElementPoll {
@@ -453,9 +482,16 @@ func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 
 	for _, td := range toDelete {
 		r := am.voteRecords[td]
-		for _, in := range r.txdesc.Tx.MsgTx().TxIn {
-			delete(am.outpoints, in.PreviousOutPoint)
+
+		switch r.targetType {
+		case VoteTargetTypeTransaction:
+			for _, in := range r.txdesc.Tx.MsgTx().TxIn {
+				delete(am.outpoints, in.PreviousOutPoint)
+			}
+		case VoteTargetTypeBlock:
+			delete(am.blocks, *r.blkdesc.Block.Hash())
 		}
+
 		delete(am.voteRecords, td)
 	}
 
@@ -517,17 +553,25 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 		// a previously unaccepted state. Let's look up all the double spends
 		// of this transaction and reset their confidence back to zero.
 		if vr.isAccepted() {
-			for _, in := range vr.txdesc.Tx.MsgTx().TxIn {
-				doublespends, ok := am.outpoints[in.PreviousOutPoint]
-				if ok {
-					for _, ds := range doublespends {
-						dsid := ds.Tx.Hash()
-						if !inv.Hash.IsEqual(dsid) {
-							dsvr, ok := am.voteRecords[*dsid]
-							if ok {
-								dsvr.confidence = 0
-							}
+			switch vr.targetType {
+			case VoteTargetTypeTransaction:
+				for _, in := range vr.txdesc.Tx.MsgTx().TxIn {
+					for _, ds := range am.outpoints[in.PreviousOutPoint] {
+						if inv.Hash.IsEqual(ds.Tx.Hash()) {
+							continue
 						}
+						if dsvr, ok := am.voteRecords[*ds.Tx.Hash()]; ok {
+							dsvr.confidence = 0
+						}
+					}
+				}
+			case VoteTargetTypeBlock:
+				for _, blk := range am.blocks[*vr.blkdesc.Hash()] {
+					if inv.Hash.IsEqual(blk.Hash()) {
+						continue
+					}
+					if blkVR, ok := am.voteRecords[*blk.Hash()]; ok {
+						blkVR.confidence = 0
 					}
 				}
 			}
@@ -543,7 +587,7 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 			// TODO: double spends of the finalized transaction should be removed from the mempool.
 		case StatusInvalid:
 			log.Infof("Avalanche rejected transaction %s", inv.Hash.String())
-			am.rejectedTxs[inv.Hash] = struct{}{}
+			am.rejectedTargets[inv.Hash] = struct{}{}
 			// TODO: remove tx and descendants from mempool
 		}
 	}
