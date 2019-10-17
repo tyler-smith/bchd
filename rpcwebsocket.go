@@ -926,6 +926,7 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 // notifyTxFinalized notifies websocket clients that have registered for updates
 // when a new transaction has been finalized by avalanche.
 func (m *wsNotificationManager) notifyTxFinalized(clients map[chan struct{}]*wsClient, tx *bchutil.Tx, finalizationTime time.Duration) {
+	fmt.Println("notifyTxFinalized!!!!!!!!!!!!!!!!", tx.Hash().String(), finalizationTime.Seconds())
 	ntfn := btcjson.NewTxFinalizedNtfn(tx.Hash().String(), finalizationTime)
 
 	marshalledJSON, err := btcjson.MarshalCmd("1.0", nil, ntfn)

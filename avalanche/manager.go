@@ -378,6 +378,7 @@ func (am *AvalancheManager) eventLoop() {
 		log.Error(err)
 		return
 	}
+
 	key := queryKey(requestID, p.ID())
 	am.queries[key] = NewRequestRecord(time.Now().Unix(), invs)
 	time.AfterFunc(AvalancheRequestTimeout, func() {
@@ -388,6 +389,7 @@ func (am *AvalancheManager) eventLoop() {
 	for _, inv := range invs {
 		req.AddInvVect(&inv)
 	}
+
 	p.QueueMessage(req, nil)
 }
 

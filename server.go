@@ -465,6 +465,10 @@ func hasServices(advertised, desired wire.ServiceFlag) bool {
 	return advertised&desired == desired
 }
 
+func hasAnyServices(advertised, desired wire.ServiceFlag) bool {
+	return advertised&desired > 0
+}
+
 // OnVersion is invoked when a peer receives a version bitcoin message
 // and is used to negotiate the protocol version details as well as kick start
 // the communications.
@@ -500,8 +504,9 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	}
 
 	// Reject outbound peers that are not full nodes.
-	wantServices := wire.SFNodeNetwork
-	if !isInbound && !hasServices(msg.Services, wantServices) {
+	wantServices := wire.SFNodeNetwork | wire.SFNodeAvalanche
+	if !isInbound && !hasAnyServices(msg.Services, wantServices) {
+		// if !isInbound && !hasServices(msg.Services, wantServices) && !hasServices(msg.Services, wire.SFNodeAvalance) {
 		missingServices := wantServices & ^msg.Services
 		srvrLog.Debugf("Rejecting peer %s with services %v due to not "+
 			"providing desired services %v", sp.Peer, msg.Services,

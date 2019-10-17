@@ -966,6 +966,7 @@ type FutureNotifyAvalancheResult chan *response
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.
 func (r FutureNotifyAvalancheResult) Receive() error {
+	fmt.Println("FutureNotifyAvalancheResult.Receive()")
 	_, err := receiveFuture(r)
 	return err
 }
@@ -1004,6 +1005,7 @@ func (c *Client) NotifyAvalancheAsync() FutureNotifyAvalancheResult {
 //
 // NOTE: This is a bchd extension and requires a websocket connection.
 func (c *Client) NotifyAvalanche() error {
+	fmt.Println("NotifyAvalanche")
 	return c.NotifyAvalancheAsync().Receive()
 }
 

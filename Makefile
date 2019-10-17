@@ -1,4 +1,4 @@
-APPNAME = bchd
+APPNAME ?= bchd
 CLINAME = bchctl
 OUTDIR = pkg
 
