@@ -147,6 +147,9 @@ type NotificationHandlers struct {
 	// OnTxFinalized is invoked when the avalanche manager finalizes a tranasction.
 	OnTxFinalized func(txid *chainhash.Hash, finalizationTime time.Duration)
 
+	// OnBlkFinalized is invoked when the avalanche manager finalizes a block.
+	OnBlkFinalized func(blkid *chainhash.Hash, finalizationTime time.Duration)
+
 	// OnRelevantTxAccepted is invoked when an unmined transaction passes
 	// the client's transaction filter.
 	//
@@ -474,12 +477,29 @@ func (c *Client) handleNotification(ntfn *rawNotification) {
 
 		txid, t, err := parseTxFinalizeNtfnParams(ntfn.Params)
 		if err != nil {
-			log.Warnf("Received invalid recvtx notification: %v",
+			log.Warnf("Received invalid txfinalized notification: %v",
 				err)
 			return
 		}
 
 		c.ntfnHandlers.OnTxFinalized(txid, t)
+
+	// OnBlkFinalized
+	case btcjson.BlkFinalizedNtfnMethod:
+		// Ignore the notification if the client is not interested in
+		// it.
+		if c.ntfnHandlers.OnBlkFinalized == nil {
+			return
+		}
+
+		blkid, t, err := parseBlkFinalizeNtfnParams(ntfn.Params)
+		if err != nil {
+			log.Warnf("Received invalid blkfinalized notification: %v",
+				err)
+			return
+		}
+
+		c.ntfnHandlers.OnBlkFinalized(blkid, t)
 
 	// OnUnknownNotification
 	default:
@@ -733,6 +753,44 @@ func parseTxFinalizeNtfnParams(params []json.RawMessage) (*chainhash.Hash,
 		return nil, time.Second, err
 	}
 	return txid, t, nil
+}
+
+// parseBlkFinalizeNtfnParams parses out the blkid and duration
+// from the raw message
+func parseBlkFinalizeNtfnParams(params []json.RawMessage) (*chainhash.Hash,
+	time.Duration, error) {
+
+	if len(params) == 0 || len(params) > 2 {
+		return nil, time.Second, wrongNumParams(len(params))
+	}
+
+	// Unmarshal first parameter as a string.
+	var blkidStr string
+	err := json.Unmarshal(params[0], &blkidStr)
+	if err != nil {
+		return nil, time.Second, err
+	}
+
+	// If present, unmarshal second optional parameter
+	var finalizationTimeStr string
+	if len(params) > 1 {
+		err = json.Unmarshal(params[1], &finalizationTimeStr)
+		if err != nil {
+			return nil, time.Second, err
+		}
+	}
+
+	// Hex decode and deserialize the transaction.
+	blkid, err := chainhash.NewHashFromStr(blkidStr)
+	if err != nil {
+		return nil, time.Second, err
+	}
+
+	t, err := time.ParseDuration(finalizationTimeStr)
+	if err != nil {
+		return nil, time.Second, err
+	}
+	return blkid, t, nil
 }
 
 // parseRescanProgressParams parses out the height of the last rescanned block

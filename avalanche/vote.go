@@ -24,15 +24,15 @@ const (
 	StatusFinalized
 )
 
-type voteType int
+type VoteType int
 
 const (
-	VoteTypeTransaction voteType = iota
+	VoteTypeTransaction VoteType = iota
 	VoteTypeBlock
 )
 
 type VoteTarget interface {
-	Type() voteType
+	Type() VoteType
 	Hash() chainhash.Hash
 }
 
@@ -40,7 +40,7 @@ type VoteTarget interface {
 type VoteRecord struct {
 	txdesc   *TxDesc
 	blkdesc  *BlkDesc
-	voteType voteType
+	voteType VoteType
 	// target     VoteTarget
 
 	votes            uint8
@@ -71,6 +71,18 @@ func NewVoteRecord(txdesc *TxDesc, blkdesc *BlkDesc, accepted bool) *VoteRecord 
 		consider:         0,
 		inflightRequests: 0,
 	}
+}
+
+func (vr VoteRecord) VoteType() VoteType {
+	return vr.voteType
+}
+
+func (vr VoteRecord) TxDesc() TxDesc {
+	return *vr.txdesc
+}
+
+func (vr VoteRecord) BlkDesc() BlkDesc {
+	return *vr.blkdesc
 }
 
 // isAccepted returns whether or not the voted state is acceptance or not

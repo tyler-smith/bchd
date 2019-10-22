@@ -1787,8 +1787,8 @@ func (s *server) AnnounceNewTransactions(txns []*mempool.TxDesc) {
 }
 
 // NotifyTxFinalized is fired whenever the avalanche manager finalizes a new transaction.
-func (s *server) NotifyTxFinalized(tx *bchutil.Tx, finalizationTime time.Duration) {
-	s.rpcServer.NotifyAvalanche(tx, finalizationTime)
+func (s *server) NotifyTxFinalized(vr avalanche.VoteRecord, finalizationTime time.Duration) {
+	s.rpcServer.NotifyAvalanche(vr, finalizationTime)
 }
 
 func (s *server) onChainNotification(n *blockchain.Notification) {
@@ -3303,12 +3303,19 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		return nil, err
 	}
 
-	blk, err := s.chain.BlockByHeight(s.chain.BestSnapshot().Height)
-	if err != nil {
-		return nil, err
-	}
+	go func() {
+		height := s.chain.BestSnapshot().Height
+		t := time.NewTicker(10 * time.Second)
+		for range t.C {
+			blk, err := s.chain.BlockByHeight(height)
+			if err != nil {
+				return
+			}
 
-	go s.avalancheManager.NewBlock(avalanche.BlkDesc{Block: blk})
+			s.avalancheManager.NewBlock(avalanche.BlkDesc{Block: blk})
+			height--
+		}
+	}()
 
 	s.chain.Subscribe(s.onChainNotification)
 

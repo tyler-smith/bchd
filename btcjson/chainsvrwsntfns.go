@@ -81,6 +81,10 @@ const (
 	// TxFinalizedNtfnMethod is the method used for notifications from
 	// the avalanche manager that a transaction has been finalized by avalanche.
 	TxFinalizedNtfnMethod = "txfinalized"
+
+	// BlkFinalizedNtfnMethod is the method used for notifications from
+	// the avalanche manager that a block has been finalized by avalanche.
+	BlkFinalizedNtfnMethod = "blkfinalized"
 )
 
 // BlockConnectedNtfn defines the blockconnected JSON-RPC notification.
@@ -304,6 +308,19 @@ func NewTxFinalizedNtfn(txid string, finalizationTime time.Duration) *TxFinalize
 	return &TxFinalizedNtfn{TxID: txid, FinalizationTime: finalizationTime.String()}
 }
 
+// BlkFinalizedNtfn defines the parameters to the blkfinalized
+// JSON-RPC notification.
+type BlkFinalizedNtfn struct {
+	BlkID            string `json:"blkid"`
+	FinalizationTime string `json:"finalizationTime"`
+}
+
+// NewBlkFinalizedNtfn returns a new instance which can be used to issue a
+// blkfinalized JSON-RPC notification.
+func NewBlkFinalizedNtfn(blkid string, finalizationTime time.Duration) *BlkFinalizedNtfn {
+	return &BlkFinalizedNtfn{BlkID: blkid, FinalizationTime: finalizationTime.String()}
+}
+
 func init() {
 	// The commands in this file are only usable by websockets and are
 	// notifications.
@@ -321,4 +338,5 @@ func init() {
 	MustRegisterCmd(TxAcceptedVerboseNtfnMethod, (*TxAcceptedVerboseNtfn)(nil), flags)
 	MustRegisterCmd(RelevantTxAcceptedNtfnMethod, (*RelevantTxAcceptedNtfn)(nil), flags)
 	MustRegisterCmd(TxFinalizedNtfnMethod, (*TxFinalizedNtfn)(nil), flags)
+	MustRegisterCmd(BlkFinalizedNtfnMethod, (*BlkFinalizedNtfn)(nil), flags)
 }

@@ -4103,8 +4103,8 @@ func (s *rpcServer) NotifyNewTransactions(txns []*mempool.TxDesc) {
 
 // NotifyNewTransactions notifies the websocket. This function should be called
 // whenever avalanche finalizes a transaction.
-func (s *rpcServer) NotifyAvalanche(tx *bchutil.Tx, finalizationTime time.Duration) {
-	s.ntfnMgr.NotifyAvalanche(tx, finalizationTime)
+func (s *rpcServer) NotifyAvalanche(vr avalanche.VoteRecord, finalizationTime time.Duration) {
+	s.ntfnMgr.NotifyAvalanche(vr, finalizationTime)
 }
 
 // limitConnections responds with a 503 service unavailable and returns true if

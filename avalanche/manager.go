@@ -21,7 +21,9 @@ const (
 	AvalancheFinalizationScore = 128
 
 	// AvalancheTimeStep is the amount of time to wait between event ticks
-	AvalancheTimeStep = 10 * time.Millisecond
+	// AvalancheTimeStep = 10 * time.Millisecond
+	// AvalancheTimeStep = 1 * time.Millisecond
+	AvalancheTimeStep = 100000 * time.Nanosecond
 
 	// AvalancheMaxElementPoll is the maximum number of invs to send in a single
 	// query
@@ -114,7 +116,7 @@ type AvalancheManager struct {
 	round   int64
 	queries map[string]RequestRecord
 
-	notificationCallback func(tx *bchutil.Tx, finalizationTime time.Duration)
+	notificationCallback func(vr VoteRecord, finalizationTime time.Duration)
 
 	privKey *bchec.PrivateKey
 }
@@ -140,7 +142,7 @@ func New() (*AvalancheManager, error) {
 	}, nil
 }
 
-func (am *AvalancheManager) SetNotificationCallback(cb func(tx *bchutil.Tx, finalizationTime time.Duration)) {
+func (am *AvalancheManager) SetNotificationCallback(cb func(vr VoteRecord, finalizationTime time.Duration)) {
 	am.notificationCallback = cb
 }
 
@@ -650,11 +652,11 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 		switch vr.status() {
 		case StatusFinalized:
 			if am.notificationCallback != nil {
-				switch vr.voteType {
-				case VoteTypeTransaction:
-					go am.notificationCallback(vr.txdesc.Tx, time.Since(vr.timestamp))
-				case VoteTypeBlock:
-				}
+				// if vr.voteType == VoteTypeBlock {
+				// 	fmt.Println(vr.blkdesc.Hash(), vr.blkdesc.Height())
+				// 	panic("2")
+				// }
+				go am.notificationCallback(*vr, time.Since(vr.timestamp))
 			}
 			log.Infof("Avalanche finalized transaction %s in %s", inv.Hash.String(), time.Since(vr.timestamp))
 			// TODO: the finalized transaction should be added to the mempool if it isn't already in there

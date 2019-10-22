@@ -23,6 +23,7 @@ import (
 	"golang.org/x/crypto/ripemd160"
 
 	"github.com/btcsuite/websocket"
+	"github.com/gcash/bchd/avalanche"
 	"github.com/gcash/bchd/blockchain"
 	"github.com/gcash/bchd/btcjson"
 	"github.com/gcash/bchd/chaincfg"
@@ -251,10 +252,22 @@ func (m *wsNotificationManager) NotifyMempoolTx(tx *bchutil.Tx, isNew bool) {
 
 // NotifyAvalanche passes a transaction finalized by avalanche to the
 // notification manager for avalanche notification processing.
-func (m *wsNotificationManager) NotifyAvalanche(tx *bchutil.Tx, finalizationTime time.Duration) {
-	n := &notificationTxFinalized{
-		tx:               tx,
-		finalizationTime: finalizationTime,
+func (m *wsNotificationManager) NotifyAvalanche(vr avalanche.VoteRecord, finalizationTime time.Duration) {
+	var n interface{}
+
+	// TODO: Fix this so that this abstarction isn't leaked to here. We need an
+	// abstraction that represents either a tx or a block
+	switch vr.VoteType() {
+	case avalanche.VoteTypeTransaction:
+		n = &notificationTxFinalized{
+			tx:               vr.TxDesc().Tx,
+			finalizationTime: finalizationTime,
+		}
+	case avalanche.VoteTypeBlock:
+		n = &notificationBlkFinalized{
+			blk:              *vr.BlkDesc().Block,
+			finalizationTime: finalizationTime,
+		}
 	}
 
 	// As NotifyAvalanche will be called by mempool and the RPC server
@@ -476,6 +489,10 @@ type notificationTxFinalized struct {
 	tx               *bchutil.Tx
 	finalizationTime time.Duration
 }
+type notificationBlkFinalized struct {
+	blk              bchutil.Block
+	finalizationTime time.Duration
+}
 
 // Notification control requests
 type notificationRegisterClient wsClient
@@ -570,6 +587,13 @@ out:
 			case *notificationTxFinalized:
 				if len(avalancheNotifications) != 0 {
 					m.notifyTxFinalized(avalancheNotifications, n.tx, n.finalizationTime)
+				}
+
+			case *notificationBlkFinalized:
+				// fmt.Println(len(avalancheNotifications))
+				// panic("4")
+				if len(avalancheNotifications) != 0 {
+					m.notifyBlkFinalized(avalancheNotifications, n.blk, n.finalizationTime)
 				}
 
 			case *notificationRegisterBlocks:
@@ -928,6 +952,21 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 func (m *wsNotificationManager) notifyTxFinalized(clients map[chan struct{}]*wsClient, tx *bchutil.Tx, finalizationTime time.Duration) {
 	fmt.Println("notifyTxFinalized!!!!!!!!!!!!!!!!", tx.Hash().String(), finalizationTime.Seconds())
 	ntfn := btcjson.NewTxFinalizedNtfn(tx.Hash().String(), finalizationTime)
+
+	marshalledJSON, err := btcjson.MarshalCmd("1.0", nil, ntfn)
+	if err != nil {
+		rpcsLog.Errorf("Failed to marshal processedtx notification: %v", err)
+		return
+	}
+
+	for _, client := range clients {
+		client.QueueNotification(marshalledJSON)
+	}
+}
+
+func (m *wsNotificationManager) notifyBlkFinalized(clients map[chan struct{}]*wsClient, blk bchutil.Block, finalizationTime time.Duration) {
+	fmt.Println("notifyBlkFinalized!!!!!!!!!!!!!!!!", blk.Hash().String(), finalizationTime.Seconds())
+	ntfn := btcjson.NewBlkFinalizedNtfn(blk.Hash().String(), finalizationTime)
 
 	marshalledJSON, err := btcjson.MarshalCmd("1.0", nil, ntfn)
 	if err != nil {
