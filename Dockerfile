@@ -3,7 +3,7 @@
 # FROM golang
 FROM golang:1.13-alpine3.10
 
-LABEL maintainer="Josh Ellithorpe <quest@mac.com>"
+LABEL maintainer="Tyler Smith <tylersmith.me@gmail.com>"
 
 # Copy the local package files to the container's workspace.
 ADD . /go/src/github.com/gcash/bchd

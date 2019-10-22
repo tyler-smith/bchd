@@ -6,13 +6,15 @@ package netsync
 
 import (
 	"container/list"
-	"github.com/gcash/bchd/avalanche"
-	"github.com/gcash/bchd/mining"
+	"fmt"
 	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gcash/bchd/avalanche"
+	"github.com/gcash/bchd/mining"
 
 	"github.com/gcash/bchd/blockchain"
 	"github.com/gcash/bchd/chaincfg"
@@ -609,6 +611,7 @@ func (sm *SyncManager) updateSyncPeer(state *peerSyncState) {
 
 // handleTxMsg handles transaction messages from all peers.
 func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
+	fmt.Println("#$$$$$$$$$$$$$$$$$handleTxMsg")
 	peer := tmsg.peer
 	state, exists := sm.peerStates[peer]
 	if !exists {
@@ -670,7 +673,7 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 		code, reason := mempool.ErrToRejectErr(err)
 		peer.PushRejectMsg(wire.CmdTx, code, reason, txHash, false)
 
-		sm.avalancheNotifier.NewTransaction(&avalanche.TxDesc{
+		sm.avalancheNotifier.NewTransaction(avalanche.TxDesc{
 			TxDesc: &mempool.TxDesc{
 				TxDesc: mining.TxDesc{
 					Tx: tmsg.tx,
@@ -685,7 +688,7 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 		sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
 	}
 	for _, accepted := range acceptedTxs {
-		sm.avalancheNotifier.NewTransaction(&avalanche.TxDesc{accepted, nil})
+		sm.avalancheNotifier.NewTransaction(avalanche.TxDesc{accepted, nil})
 	}
 }
 
@@ -712,6 +715,7 @@ func (sm *SyncManager) current() bool {
 
 // handleBlockMsg handles block messages from all peers.
 func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
+	fmt.Println("handleBlockMsg##########################", bmsg.block.Height(), bmsg.block.Hash().String())
 	peer := bmsg.peer
 	state, exists := sm.peerStates[peer]
 	if !exists {
@@ -789,6 +793,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// send it.
 		code, reason := mempool.ErrToRejectErr(err)
 		peer.PushRejectMsg(wire.CmdBlock, code, reason, blockHash, false)
+
+		sm.avalancheNotifier.NewBlock(avalanche.BlkDesc{
+			Block: bmsg.block,
+			Code:  &code,
+		})
 		return
 	}
 
@@ -852,6 +861,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 		// Clear the rejected transactions.
 		sm.rejectedTxns = make(map[chainhash.Hash]struct{})
+
+		// Add to Avalanche
+		sm.avalancheNotifier.NewBlock(avalanche.BlkDesc{bmsg.block, nil})
 	}
 
 	// Update the block height for this peer. But only send a message to

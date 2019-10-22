@@ -3303,6 +3303,13 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		return nil, err
 	}
 
+	blk, err := s.chain.BlockByHeight(s.chain.BestSnapshot().Height)
+	if err != nil {
+		return nil, err
+	}
+
+	go s.avalancheManager.NewBlock(avalanche.BlkDesc{Block: blk})
+
 	s.chain.Subscribe(s.onChainNotification)
 
 	s.syncManager, err = netsync.New(&netsync.Config{

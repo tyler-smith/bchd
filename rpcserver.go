@@ -3722,7 +3722,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 	// Pass the transactions to the avalanche manager
 	for _, accepted := range acceptedTxs {
-		s.cfg.AvalancheMgr.NewTransaction(&avalanche.TxDesc{TxDesc: accepted})
+		s.cfg.AvalancheMgr.NewTransaction(avalanche.TxDesc{TxDesc: accepted})
 	}
 
 	// Generate and relay inventory vectors for all newly accepted
@@ -3818,6 +3818,10 @@ func handleSubmitBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	}
 
 	rpcsLog.Infof("Accepted block %s via submitblock", block.Hash())
+
+	// Pass the block to the avalanche manager
+	s.cfg.AvalancheMgr.NewBlock(avalanche.BlkDesc{Block: block})
+
 	return nil, nil
 }
 
@@ -4759,7 +4763,8 @@ type rpcserverSyncManager interface {
 type rpcserverAvalancheManager interface {
 
 	// NewTransaction submits the given transactions to the avalanche manager.
-	NewTransaction(tx *avalanche.TxDesc)
+	NewTransaction(tx avalanche.TxDesc)
+	NewBlock(blk avalanche.BlkDesc)
 }
 
 // rpcserverConfig is a descriptor containing the RPC server configuration.

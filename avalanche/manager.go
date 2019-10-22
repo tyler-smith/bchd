@@ -106,8 +106,10 @@ type AvalancheManager struct {
 
 	voteRecords     map[chainhash.Hash]*VoteRecord
 	outpoints       map[wire.OutPoint][]TxDesc
-	blocks          map[chainhash.Hash][]BlkDesc
+	blocks          map[int32][]BlkDesc
 	rejectedTargets map[chainhash.Hash]struct{}
+
+	targets map[fmt.Stringer][]VoteTarget
 
 	round   int64
 	queries map[string]RequestRecord
@@ -126,13 +128,15 @@ func New() (*AvalancheManager, error) {
 		peers:           make(map[*peer.Peer]struct{}),
 		wg:              sync.WaitGroup{},
 		quit:            make(chan struct{}),
-		msgChan:         make(chan interface{}),
+		msgChan:         make(chan interface{}, 1024),
 		voteRecords:     make(map[chainhash.Hash]*VoteRecord),
 		outpoints:       make(map[wire.OutPoint][]TxDesc),
-		blocks:          make(map[chainhash.Hash][]BlkDesc),
+		blocks:          make(map[int32][]BlkDesc),
 		rejectedTargets: make(map[chainhash.Hash]struct{}),
 		queries:         make(map[string]RequestRecord),
 		privKey:         avalanchePrivkey,
+
+		targets: make(map[fmt.Stringer][]VoteTarget),
 	}, nil
 }
 
@@ -169,7 +173,7 @@ out:
 			case *donePeerMsg:
 				am.handleDonePeer(msg.peer)
 			case newBlockMsg:
-				// am.handleNewBlock(msg.blk)
+				am.handleNewBlk(msg.blk)
 			case newTxsMsg:
 				am.handleNewTx(msg.tx)
 			case *blockConnectedMsg:
@@ -215,13 +219,17 @@ func (am *AvalancheManager) handleConnectedPeer(addr net.Addr, respChan chan boo
 
 // Query processes an avalanche request and returns the response.
 func (am *AvalancheManager) Query(req *wire.MsgAvaRequest) *wire.MsgAvaResponse {
+	fmt.Println("AM Query")
 	respChan := make(chan *wire.MsgAvaResponse)
 	am.msgChan <- &queryMsg{req, respChan}
 	msg := <-respChan
 	return msg
 }
 
+// NEXTUP: Make this work for blocks and download blocks/tx from the peer if we
+// don't already have them
 func (am *AvalancheManager) handleQuery(req *wire.MsgAvaRequest, respChan chan *wire.MsgAvaResponse) {
+	fmt.Println("AM handleQuery", len(req.InvList))
 	votes := make([]byte, len(req.InvList))
 	for i, inv := range req.InvList {
 		txid := inv.Hash
@@ -231,6 +239,7 @@ func (am *AvalancheManager) handleQuery(req *wire.MsgAvaRequest, respChan chan *
 		}
 		record, ok := am.voteRecords[txid]
 		if ok {
+			fmt.Println("found vote recordttttttttttttttttttttttttttttttt", txid, record.getConfidence(), record.hasFinalized(), record.isAccepted())
 			// We're only going to vote for items we have a record for.
 			vote := byte(0x00) // No vote
 			if record.isAccepted() {
@@ -244,7 +253,11 @@ func (am *AvalancheManager) handleQuery(req *wire.MsgAvaRequest, respChan chan *
 			// after avalanche finishes on the first transaction. This is going to add
 			// some complexity as we don't want to allow an infinite number of double
 			// spends into memory as we do this.
-
+			if inv.Type == wire.InvTypeBlock {
+				// am.msgChan <- &wire.NewInvVect(wire.InvTypeTx)
+				// am.msgChan <- wire.NewMsgGetBlocks()
+			}
+			// fmt.Println("tx not found in AM")
 			votes[i] = 0x80 // Neutral vote
 		}
 	}
@@ -292,14 +305,63 @@ func (am *AvalancheManager) handleDonePeer(p *peer.Peer) {
 
 // NewTransactions passes new unconfirmed transactions into the manager to be processed.
 func (am *AvalancheManager) NewTransaction(tx TxDesc) {
+	fmt.Println("1!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	am.msgChan <- newTxsMsg{tx}
 }
 
-func (am *AvalancheManager) Newblock(blk BlkDesc) {
+func (am *AvalancheManager) NewBlock(blk BlkDesc) {
+	fmt.Println("2!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	am.msgChan <- newBlockMsg{blk}
 }
 
+func (am *AvalancheManager) handleNewBlk(blk BlkDesc) {
+	fmt.Println("4!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	accepted := true
+
+	// Handle Code if not nil
+	if blk.Code != nil {
+
+	}
+
+	log.Debugf("Starting avalanche for block %s", blk.Block.Hash().String())
+
+	//
+	// NEXT UP: Make this work for blocks
+	//
+
+	// Iterate over the inputs and add each outpoint to our outpoint map
+	// for _, in := range txd.Tx.MsgTx().TxIn {
+	conflictingBlocks, ok := am.blocks[blk.Block.Height()]
+	if ok {
+		contains := false
+		for _, conflictingBlk := range conflictingBlocks {
+			if blk.Hash().IsEqual(conflictingBlk.Hash()) {
+				contains = true
+			}
+
+			// If this double spend is in the accepted state then we need to set
+			// the new transaction to accepted = false so we don't vote for it.
+			// dsTxid := ds.Tx.Hash()
+			if vr, ok := am.voteRecords[*blk.Block.Hash()]; ok && vr.isAccepted() {
+				accepted = false
+			}
+		}
+		if !contains {
+			am.blocks[blk.Block.Height()] = append(conflictingBlocks, blk)
+		}
+	} else {
+		am.blocks[blk.Block.Height()] = []BlkDesc{blk}
+	}
+	// }
+
+	// Add a new vote record
+	if _, ok = am.voteRecords[*blk.Hash()]; !ok {
+		am.voteRecords[*blk.Hash()] = NewVoteRecord(nil, &blk, accepted)
+	}
+}
+
 func (am *AvalancheManager) handleNewTx(txd TxDesc) {
+	fmt.Println("3!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	accepted := true
 	if txd.Code != nil {
 		switch *txd.Code {
@@ -362,7 +424,7 @@ func (am *AvalancheManager) handleNewTx(txd TxDesc) {
 	// Add a new vote record
 	_, ok := am.voteRecords[*txid]
 	if !ok {
-		am.voteRecords[*txid] = NewVoteRecord(txd, accepted)
+		am.voteRecords[*txid] = NewVoteRecord(&txd, nil, accepted)
 	}
 }
 
@@ -379,8 +441,8 @@ func (am *AvalancheManager) BlockConnected(block *bchutil.Block) {
 }
 
 // TODO: This should happen only after a block has been finalized
-func (am *AvalancheManager) handleBlockConnected(block *bchutil.Block) {
-	for _, tx := range block.Transactions() {
+func (am *AvalancheManager) handleBlockConnected(blk BlkDesc) {
+	for _, tx := range blk.Transactions() {
 		txid := tx.Hash()
 		am.removeVoteRecords(tx)
 		delete(am.rejectedTargets, *txid)
@@ -402,6 +464,11 @@ func (am *AvalancheManager) eventLoop() {
 		log.Error(err)
 		return
 	}
+
+	// for _, inv := range invs {
+	// 	p.QueueMessage(*wire.NewMsgInv(inv.Type, &inv.Hash), nil)
+	// 	// p.WriteMessage(wire.NewInvVect())
+	// }
 
 	key := queryKey(requestID, p.ID())
 	am.queries[key] = NewRequestRecord(time.Now().Unix(), invs)
@@ -434,6 +501,7 @@ func (am *AvalancheManager) handleRequestExpiration(key string) {
 }
 
 func (am *AvalancheManager) getRandomPeerToQuery() *peer.Peer {
+	fmt.Println("getRandomPeerToQuery")
 	i := 0
 	if len(am.peers) > 0 {
 		i = rand.Intn(len(am.peers))
@@ -448,6 +516,7 @@ func (am *AvalancheManager) getRandomPeerToQuery() *peer.Peer {
 }
 
 func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
+	fmt.Println("getInvsForNextPoll:", len(am.voteRecords))
 	var invs []wire.InvVect
 	var toDelete []chainhash.Hash
 	for targetHash, r := range am.voteRecords {
@@ -468,10 +537,10 @@ func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 		r.inflightRequests++
 
 		// We don't have a decision, we need more votes.
-		switch r.targetType {
-		case VoteTargetTypeTransaction:
+		switch r.voteType {
+		case VoteTypeTransaction:
 			invs = append(invs, *wire.NewInvVect(wire.InvTypeTx, &targetHash))
-		case VoteTargetTypeBlock:
+		case VoteTypeBlock:
 			invs = append(invs, *wire.NewInvVect(wire.InvTypeBlock, &targetHash))
 		}
 	}
@@ -483,13 +552,13 @@ func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 	for _, td := range toDelete {
 		r := am.voteRecords[td]
 
-		switch r.targetType {
-		case VoteTargetTypeTransaction:
+		switch r.voteType {
+		case VoteTypeTransaction:
 			for _, in := range r.txdesc.Tx.MsgTx().TxIn {
 				delete(am.outpoints, in.PreviousOutPoint)
 			}
-		case VoteTargetTypeBlock:
-			delete(am.blocks, *r.blkdesc.Block.Hash())
+		case VoteTypeBlock:
+			delete(am.blocks, r.blkdesc.Height())
 		}
 
 		delete(am.voteRecords, td)
@@ -500,6 +569,7 @@ func (am *AvalancheManager) getInvsForNextPoll() []wire.InvVect {
 
 // RegisterVotes processes responses to queries
 func (am *AvalancheManager) RegisterVotes(p *peer.Peer, resp *wire.MsgAvaResponse) {
+	log.Debugf("ppppppppppppppppppppppp RegisterVotes")
 	if !resp.Signature.Verify(resp.SerializeForSignature(), p.AvalanchePubkey()) {
 		log.Errorf("Invalid signature on avalanche response from peer %s", p)
 		return
@@ -553,8 +623,8 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 		// a previously unaccepted state. Let's look up all the double spends
 		// of this transaction and reset their confidence back to zero.
 		if vr.isAccepted() {
-			switch vr.targetType {
-			case VoteTargetTypeTransaction:
+			switch vr.voteType {
+			case VoteTypeTransaction:
 				for _, in := range vr.txdesc.Tx.MsgTx().TxIn {
 					for _, ds := range am.outpoints[in.PreviousOutPoint] {
 						if inv.Hash.IsEqual(ds.Tx.Hash()) {
@@ -565,8 +635,8 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 						}
 					}
 				}
-			case VoteTargetTypeBlock:
-				for _, blk := range am.blocks[*vr.blkdesc.Hash()] {
+			case VoteTypeBlock:
+				for _, blk := range am.blocks[vr.blkdesc.Height()] {
 					if inv.Hash.IsEqual(blk.Hash()) {
 						continue
 					}
@@ -580,7 +650,11 @@ func (am *AvalancheManager) handleRegisterVotes(p *peer.Peer, resp *wire.MsgAvaR
 		switch vr.status() {
 		case StatusFinalized:
 			if am.notificationCallback != nil {
-				go am.notificationCallback(vr.txdesc.Tx, time.Since(vr.timestamp))
+				switch vr.voteType {
+				case VoteTypeTransaction:
+					go am.notificationCallback(vr.txdesc.Tx, time.Since(vr.timestamp))
+				case VoteTypeBlock:
+				}
 			}
 			log.Infof("Avalanche finalized transaction %s in %s", inv.Hash.String(), time.Since(vr.timestamp))
 			// TODO: the finalized transaction should be added to the mempool if it isn't already in there

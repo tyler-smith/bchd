@@ -7,6 +7,7 @@ package wire
 import (
 	"io"
 
+	"github.com/btcsuite/btcd/wire"
 	"github.com/gcash/bchd/bchec"
 )
 
@@ -15,6 +16,12 @@ import (
 type MsgAvaPubkey struct {
 	Pubkey    *bchec.PublicKey
 	Signature *bchec.Signature
+
+	// Version
+	Version    int8
+	Sequence   int32
+	Outpoints  []wire.OutPoint
+	Signatures []*bchec.Signature
 }
 
 // BchDecode decodes r using the bitcoin protocol encoding into the receiver.

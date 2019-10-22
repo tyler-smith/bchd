@@ -55,3 +55,13 @@ protoc-all:
 		--js_out=import_style=commonjs,binary:bchrpc/pb-js \
 		--ts_out=service=true:bchrpc/pb-js \
 		bchrpc/bchrpc.proto
+
+SNOWGLOBE_PROFILE ?= tylersmith
+SNOWGLOBE_VERSION ?= $(shell git describe --tags --abbrev=0)
+SNOWGLOBE_IMAGE_NAME ?= $(SNOWGLOBE_PROFILE)/snowglobe:$(SNOWGLOBE_VERSION)
+
+snowglobe:
+	docker build -t $(SNOWGLOBE_IMAGE_NAME) .
+
+push_snowglobe:
+	docker push $(SNOWGLOBE_IMAGE_NAME)

@@ -1162,6 +1162,10 @@ func (p *Peer) readMessage(encoding wire.MessageEncoding) (wire.Message, []byte,
 	return msg, buf, nil
 }
 
+func (p *Peer) WriteMessage(msg wire.Message, enc wire.MessageEncoding) error {
+	return p.writeMessage(msg, enc)
+}
+
 // writeMessage sends a bitcoin message to the peer with logging.
 func (p *Peer) writeMessage(msg wire.Message, enc wire.MessageEncoding) error {
 	// Don't do anything if we're disconnecting.
@@ -1546,6 +1550,7 @@ out:
 			}
 
 		case *wire.MsgAvaPubkey:
+			fmt.Println("!!!got msg MsgAvaPubkey")
 			p.flagsMtx.Lock()
 			if p.remoteAvalancePubkey != nil {
 				log.Infof("Already received 'avapubkey' from peer %v -- "+
@@ -1571,10 +1576,18 @@ out:
 
 		case *wire.MsgAvaRequest:
 			if p.cfg.Listeners.OnAvaRequest != nil {
+				fmt.Println("!!!got msg MsgAvaRequest")
+
+				invMsg := wire.NewMsgInv()
+				for _, inv := range msg.InvList {
+					invMsg.AddInvVect(inv)
+				}
+				p.cfg.Listeners.OnInv(p, invMsg)
 				p.cfg.Listeners.OnAvaRequest(p, msg)
 			}
 
 		case *wire.MsgAvaResponse:
+			fmt.Println("!!!got msg MsgAvaResponse")
 			if p.cfg.Listeners.OnAvaResponse != nil {
 				p.cfg.Listeners.OnAvaResponse(p, msg)
 			}
@@ -1607,16 +1620,19 @@ out:
 			}
 
 		case *wire.MsgTx:
+			fmt.Println("!!!got msg MsgTx")
 			if p.cfg.Listeners.OnTx != nil {
 				p.cfg.Listeners.OnTx(p, msg)
 			}
 
 		case *wire.MsgBlock:
+			fmt.Println("!!!got msg MsgBlock")
 			if p.cfg.Listeners.OnBlock != nil {
 				p.cfg.Listeners.OnBlock(p, msg, buf)
 			}
 
 		case *wire.MsgInv:
+			fmt.Println("!!!got msg MsgInv")
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}

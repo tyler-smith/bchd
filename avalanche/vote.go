@@ -1,6 +1,7 @@
 package avalanche
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gcash/bchd/chaincfg/chainhash"
@@ -23,24 +24,24 @@ const (
 	StatusFinalized
 )
 
-type voteTargetType int
+type voteType int
 
 const (
-	VoteTargetTypeTransaction voteTargetType = iota
-	VoteTargetTypeBlock
+	VoteTypeTransaction voteType = iota
+	VoteTypeBlock
 )
 
 type VoteTarget interface {
-	Type() voteTargetType
+	Type() voteType
 	Hash() chainhash.Hash
 }
 
 // VoteRecord keeps track of a series of votes for a target
 type VoteRecord struct {
-	targetType voteTargetType
-
-	txdesc  TxDesc
-	blkdesc BlkDesc
+	txdesc   *TxDesc
+	blkdesc  *BlkDesc
+	voteType voteType
+	// target     VoteTarget
 
 	votes            uint8
 	consider         uint8
@@ -51,8 +52,25 @@ type VoteRecord struct {
 
 // NewVoteRecord instantiates a new base record for voting on a target
 // `accepted` indicates whether or not the initial state should be acceptance
-func NewVoteRecord(txdesc TxDesc, accepted bool) *VoteRecord {
-	return &VoteRecord{txdesc: txdesc, confidence: boolToUint16(accepted), timestamp: time.Now()}
+func NewVoteRecord(txdesc *TxDesc, blkdesc *BlkDesc, accepted bool) *VoteRecord {
+	vt := VoteTypeBlock
+	if txdesc != nil {
+		vt = VoteTypeTransaction
+	}
+
+	return &VoteRecord{
+		voteType: vt,
+		txdesc:   txdesc,
+		blkdesc:  blkdesc,
+
+		confidence: boolToUint16(accepted),
+		timestamp:  time.Now(),
+
+		// These all start at 0, specified here for explicity
+		votes:            0,
+		consider:         0,
+		inflightRequests: 0,
+	}
 }
 
 // isAccepted returns whether or not the voted state is acceptance or not
@@ -78,9 +96,11 @@ func (vr *VoteRecord) regsiterVote(vote uint8) bool {
 
 	yes := countBits8(vr.votes&vr.consider&0xff) > 6
 
-	// The round is inconclusive
 	if !yes {
 		no := countBits8((-vr.votes-1)&vr.consider&0xff) > 6
+
+		fmt.Println("uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu", vr.voteType, vote, yes, no)
+		// The round is inconclusive
 		if !no {
 			return false
 		}
@@ -89,6 +109,7 @@ func (vr *VoteRecord) regsiterVote(vote uint8) bool {
 	// Vote is conclusive and agrees with our current state
 	if vr.isAccepted() == yes {
 		vr.confidence += 2
+		fmt.Println("rrrrrrrrrrrrrrrrrrrrrr vr.confidence += 2", vr.confidence)
 		return vr.getConfidence() == AvalancheFinalizationScore
 	}
 
